@@ -201,13 +201,28 @@ class MandateRunner:
         return "value"
 
 
+@dataclass
+class PipelineResult:
+    """Result of executing a multi-mandate pipeline."""
+    stages: list[RunResult] = field(default_factory=list)
+    type_errors: list[str] = field(default_factory=list)
+
+    @property
+    def all_passed(self) -> bool:
+        return all(s.all_passed for s in self.stages)
+
+    @property
+    def final_output(self) -> dict[str, Any]:
+        return self.stages[-1].output if self.stages else {}
+
+
 def run(
     mdt_file: str | Path,
     input_data: dict,
     model: str = "gpt-4o-mini",
     external_functions: dict | None = None,
 ) -> RunResult:
-    """Execute a .mdt file end-to-end.
+    """Execute a .mdt file end-to-end (first mandate only).
 
     1. Lex the file
     2. Parse to AST
@@ -239,3 +254,46 @@ def run(
     result.type_errors = type_errors
 
     return result
+
+
+def run_pipeline(
+    mdt_file: str | Path,
+    input_data: dict,
+    model: str = "gpt-4o-mini",
+    external_functions: dict | None = None,
+) -> PipelineResult:
+    """Execute all mandates in a .mdt file as a pipeline.
+
+    Output of mandate N is merged into the input of mandate N+1.
+    Each stage runs type-checking, execution, and verification.
+    """
+    path = Path(mdt_file)
+    source = path.read_text(encoding="utf-8")
+
+    tokens = tokenize(source)
+    program = parse(tokens)
+    if not program.mandates:
+        raise RuntimeError(f"No mandate blocks found in {path}")
+
+    tc_result = check(program)
+    type_errors = [str(e) for e in tc_result.errors]
+
+    runner = MandateRunner(model=model, external_functions=external_functions)
+    pipeline_result = PipelineResult(type_errors=type_errors)
+
+    current_input = dict(input_data)
+
+    for mandate in program.mandates:
+        result = runner.run_mandate(mandate, current_input)
+        pipeline_result.stages.append(result)
+
+        if result.runtime_error:
+            break  # Stop pipeline on error
+
+        if not result.all_passed:
+            break  # Stop pipeline on verification failure
+
+        # Merge output into input for next stage
+        current_input = {**current_input, **result.output}
+
+    return pipeline_result

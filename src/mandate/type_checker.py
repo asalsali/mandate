@@ -244,4 +244,58 @@ class TypeChecker:
 def check(program: Program) -> TypeCheckResult:
     """Type-check a Mandate program."""
     checker = TypeChecker()
-    return checker.check_program(program)
+    result = checker.check_program(program)
+
+    # Pipeline type checking: verify output→input compatibility
+    if len(program.mandates) > 1:
+        _check_pipeline_types(program, result)
+
+    return result
+
+
+def _check_pipeline_types(program: Program, result: TypeCheckResult) -> None:
+    """Check cross-mandate type compatibility in a pipeline.
+
+    For each consecutive pair of mandates, verify that the output fields
+    of mandate N cover the input fields required by mandate N+1.
+    """
+    for i in range(len(program.mandates) - 1):
+        producer = program.mandates[i]
+        consumer = program.mandates[i + 1]
+        ctx = f"pipeline {producer.name} -> {consumer.name}"
+
+        if not consumer.input_type:
+            continue  # Consumer takes no input — always compatible
+
+        if not producer.output_type:
+            result.add(
+                f"'{producer.name}' has no output type but "
+                f"'{consumer.name}' expects input fields: "
+                f"{list(consumer.input_type.fields.keys())}",
+                ctx,
+            )
+            continue
+
+        # Check that every field consumer needs is produced by producer
+        # (or was in the original input — we can't know that statically,
+        # so we only warn on fields the producer doesn't provide)
+        produced = set(producer.output_type.fields.keys())
+        for field_name, field_type in consumer.input_type.fields.items():
+            if field_name not in produced:
+                result.add(
+                    f"'{consumer.name}' expects input field '{field_name}' "
+                    f"but '{producer.name}' does not output it "
+                    f"(must be provided in initial input or by an earlier stage)",
+                    ctx,
+                )
+
+            # Type compatibility check
+            elif field_name in producer.output_type.fields:
+                out_type = producer.output_type.fields[field_name]
+                if repr(out_type) != repr(field_type):
+                    result.add(
+                        f"Type mismatch: '{producer.name}' outputs "
+                        f"'{field_name}' as {out_type} but '{consumer.name}' "
+                        f"expects {field_type}",
+                        ctx,
+                    )

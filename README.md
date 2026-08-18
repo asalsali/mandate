@@ -160,19 +160,40 @@ Display the AST structure of a `.mdt` file.
 
 ### `mandate check <file>`
 
-Type-check and validate a `.mdt` file. Reports missing intents, undefined variables, output field mismatches, and unknown functions.
+Type-check and validate a `.mdt` file. Reports missing intents, undefined variables, output field mismatches, and unknown functions. For multi-mandate files, also verifies cross-mandate type compatibility (output fields of mandate N must cover input fields of mandate N+1).
 
 ### `mandate transpile <file>`
 
 Generate equivalent Python code from a `.mdt` file.
 
-### `mandate run <file> [--input JSON] [--model NAME]`
+### `mandate run <file> [--input JSON] [--model NAME] [--pipeline]`
 
 Execute a `.mdt` file end-to-end: lex, parse, type-check, run flow, call LLM for synthesize blocks, and evaluate verify assertions.
 
 ```bash
 mandate run sort_array.mdt --input '{"numbers": [3, 1, 2]}'
 ```
+
+With `--pipeline`, run all mandates in the file as a chained pipeline -- output of mandate N is merged into the input of mandate N+1:
+
+```bash
+mandate run pipeline.mdt --input '{"source": "sales", "question": "trend?"}' --pipeline
+```
+
+### `mandate analyze <file>`
+
+Static analysis: dependency graph, token cost estimate, verify coverage, dead mandate detection. This is whole-program analysis that catches issues before any LLM tokens are spent.
+
+```bash
+mandate analyze pipeline.mdt
+```
+
+Reports:
+- Per-mandate synthesize count and verify coverage
+- Pipeline data dependencies (which fields flow between mandates)
+- Estimated LLM calls
+- Dead mandates (output never consumed downstream)
+- Unverified output fields
 
 ### `mandate air <file> [--lineage JSON]`
 
@@ -203,7 +224,7 @@ pip install -e ".[dev]"
 pytest tests/ -v
 ```
 
-83 tests covering lexer, parser, type checker, transpiler, AIR serializer, runner, and verify engine.
+106 tests covering lexer, parser, type checker, transpiler, AIR serializer, runner, verify engine, pipeline execution, and static analyzer.
 
 ## License
 

@@ -33,7 +33,7 @@ def _read_source(file: str) -> str:
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="mandate")
+@click.version_option(version="0.2.0", prog_name="mandate")
 def main():
     """Mandate -- an agent-native programming language."""
     pass
@@ -123,9 +123,10 @@ def transpile(file: str):
 @click.argument("file")
 @click.option("--input", "-i", "input_json", default="{}", help="Input data as JSON string")
 @click.option("--model", "-m", default="gpt-4o-mini", help="LLM model for synthesize blocks")
-def run(file: str, input_json: str, model: str):
+@click.option("--pipeline", "-p", is_flag=True, help="Run all mandates as a chained pipeline")
+def run(file: str, input_json: str, model: str, pipeline: bool):
     """Run a .mdt file end-to-end."""
-    from .runner import run as run_mandate
+    from .runner import run as run_mandate, run_pipeline
 
     try:
         input_data = json.loads(input_json)
@@ -133,32 +134,71 @@ def run(file: str, input_json: str, model: str):
         console.print(f"[mandate.fail]Invalid input JSON:[/] {e}")
         sys.exit(1)
 
+    if pipeline:
+        _run_pipeline_mode(file, input_data, model)
+    else:
+        _run_single_mode(file, input_data, model)
+
+
+def _run_single_mode(file: str, input_data: dict, model: str):
+    """Run a single mandate (first in file)."""
+    from .runner import run as run_mandate
+
     try:
         result = run_mandate(file, input_data, model=model)
     except Exception as e:
         console.print(f"[mandate.fail]Runtime error:[/] {e}")
         sys.exit(1)
 
-    # Display type warnings
+    _display_run_result(result)
+
+
+def _run_pipeline_mode(file: str, input_data: dict, model: str):
+    """Run all mandates in a pipeline."""
+    from .runner import run_pipeline
+
+    try:
+        result = run_pipeline(file, input_data, model=model)
+    except Exception as e:
+        console.print(f"[mandate.fail]Runtime error:[/] {e}")
+        sys.exit(1)
+
     if result.type_errors:
         console.print("[mandate.gold]Type warnings:[/]")
         for err in result.type_errors:
             console.print(f"  [mandate.dim]![/] {err}")
         console.print()
 
-    # Display runtime error
+    for i, stage in enumerate(result.stages):
+        console.print(f"\n[mandate.gold]Stage {i + 1}/{len(result.stages)}[/]")
+        _display_run_result(stage)
+
+        if stage.runtime_error or not stage.all_passed:
+            console.print(f"\n[mandate.fail]Pipeline stopped at stage {i + 1}.[/]")
+            sys.exit(1)
+
+    if result.all_passed:
+        console.print(f"\n[mandate.ok]Pipeline complete: {len(result.stages)} stages, all passed.[/]")
+
+
+def _display_run_result(result):
+    """Display a single RunResult."""
+    if result.type_errors:
+        console.print("[mandate.gold]Type warnings:[/]")
+        for err in result.type_errors:
+            console.print(f"  [mandate.dim]![/] {err}")
+        console.print()
+
     if result.runtime_error:
         console.print(f"[mandate.fail]Runtime error:[/] {result.runtime_error}")
         sys.exit(1)
 
-    # Display output
     console.print(Panel(
         json.dumps(result.output, indent=2, default=str),
         title=f"[mandate.gold]{result.mandate_name} output[/]",
         border_style="mandate.gold",
     ))
 
-    # Display verification
     if result.verify_results:
         table = Table(title="Verification", border_style="mandate.gold")
         table.add_column("Check", style="mandate.dim")
@@ -172,13 +212,11 @@ def run(file: str, input_json: str, model: str):
 
         console.print(table)
 
-    # Summary
     if result.all_passed:
-        console.print(f"\n[mandate.ok]All {len(result.verify_results)} verifications passed.[/]")
+        console.print(f"[mandate.ok]All {len(result.verify_results)} verifications passed.[/]")
     else:
         failed = sum(1 for v in result.verify_results if not v.passed)
-        console.print(f"\n[mandate.fail]{failed} verification(s) failed.[/]")
-        sys.exit(1)
+        console.print(f"[mandate.fail]{failed} verification(s) failed.[/]")
 
 
 @main.command()
@@ -206,6 +244,83 @@ def air(file: str, lineage: str | None):
     lineage_dict = json.loads(lineage) if lineage else None
     air_json = to_air_json(program.mandates[0], lineage=lineage_dict)
     console.print(Syntax(air_json, "json", theme="monokai"))
+
+
+@main.command()
+@click.argument("file")
+def analyze(file: str):
+    """Static analysis: dependency graph, token cost, verify coverage."""
+    from .analyze import analyze as do_analyze
+    from .lexer import tokenize
+    from .parser import parse as parse_tokens
+
+    source = _read_source(file)
+
+    try:
+        tokens = tokenize(source)
+        program = parse_tokens(tokens)
+    except Exception as e:
+        console.print(f"[mandate.fail]Error:[/] {e}")
+        sys.exit(1)
+
+    report = do_analyze(program)
+
+    # Mandate summary table
+    table = Table(title="Mandate Analysis", border_style="mandate.gold")
+    table.add_column("Mandate", style="mandate.gold")
+    table.add_column("Input", justify="center")
+    table.add_column("Output", justify="center")
+    table.add_column("Synth", justify="center")
+    table.add_column("Verify", justify="center")
+    table.add_column("Coverage", justify="center")
+
+    for m in report.mandates:
+        covered = len(m.output_fields) - len(m.unverified_fields)
+        total = len(m.output_fields)
+        if total == 0:
+            coverage = "[mandate.dim]n/a[/]"
+        elif covered == total:
+            coverage = f"[mandate.ok]{covered}/{total}[/]"
+        else:
+            coverage = f"[mandate.fail]{covered}/{total}[/]"
+
+        table.add_row(
+            m.name,
+            str(len(m.input_fields)),
+            str(len(m.output_fields)),
+            str(m.synthesize_count),
+            str(m.verify_count),
+            coverage,
+        )
+
+    console.print(table)
+
+    # Pipeline dependency graph
+    if report.edges:
+        console.print(f"\n[mandate.gold]Pipeline Dependencies[/]")
+        for edge in report.edges:
+            fields = ", ".join(edge.fields)
+            console.print(f"  {edge.producer} [mandate.dim]--({fields})-->[/] {edge.consumer}")
+
+    # Token cost estimate
+    console.print(f"\n[mandate.gold]Cost Estimate[/]")
+    console.print(f"  LLM calls: [mandate.gold]{report.estimated_total_llm_calls}[/]")
+    console.print(f"  Verify assertions: [mandate.gold]{report.total_verify_assertions}[/]")
+
+    # Dead mandates
+    if report.dead_mandates:
+        console.print(f"\n[mandate.fail]Dead Mandates[/] (output never consumed):")
+        for name in report.dead_mandates:
+            console.print(f"  [mandate.fail]x[/] {name}")
+
+    # Warnings
+    if report.warnings:
+        console.print(f"\n[mandate.gold]Warnings[/]")
+        for w in report.warnings:
+            console.print(f"  [mandate.dim]![/] {w}")
+
+    if not report.warnings and not report.dead_mandates:
+        console.print(f"\n[mandate.ok]No issues found.[/]")
 
 
 def _format_ast(mandate) -> str:
