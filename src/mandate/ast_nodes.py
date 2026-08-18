@@ -194,6 +194,13 @@ class RequiresDecl:
 # ---------------------------------------------------------------------------
 
 @dataclass
+class BudgetBlock:
+    """budget { max_calls: 3, max_tokens: 5000 }."""
+    max_calls: int | None = None
+    max_tokens: int | None = None
+
+
+@dataclass
 class ImportDecl:
     """import <name> from "<path>"."""
     name: str
@@ -211,6 +218,7 @@ class MandateBlock:
     flow: list[Any] = field(default_factory=list)  # list of statements
     verify: list[VerifyExpr] = field(default_factory=list)
     handoff: HandoffBlock | None = None
+    budget: BudgetBlock | None = None
 
 
 @dataclass

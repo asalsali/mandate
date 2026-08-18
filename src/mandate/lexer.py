@@ -36,6 +36,9 @@ class TokenType(Enum):
     ENUM = auto()
     IMPORT = auto()
     FROM = auto()
+    BUDGET = auto()
+    MAX_CALLS = auto()
+    MAX_TOKENS = auto()
 
     # Delimiters
     LBRACE = auto()
@@ -104,6 +107,9 @@ KEYWORDS: dict[str, TokenType] = {
     "enum": TokenType.ENUM,
     "import": TokenType.IMPORT,
     "from": TokenType.FROM,
+    "budget": TokenType.BUDGET,
+    "max_calls": TokenType.MAX_CALLS,
+    "max_tokens": TokenType.MAX_TOKENS,
 }
 
 

@@ -33,6 +33,8 @@ class MandateAnalysis:
     verify_count: int
     unverified_fields: list[str]
     estimated_llm_calls: int
+    budget_max_calls: int | None = None
+    budget_exceeded: bool = False
 
 
 @dataclass
@@ -107,6 +109,14 @@ def analyze(program: Program) -> AnalysisReport:
         verified = _get_verified_fields(mandate)
         unverified = [f for f in output_fields if f not in verified]
 
+        # Budget checking
+        budget_max = None
+        budget_exceeded = False
+        if mandate.budget and mandate.budget.max_calls is not None:
+            budget_max = mandate.budget.max_calls
+            if synth_count > budget_max:
+                budget_exceeded = True
+
         analysis = MandateAnalysis(
             name=mandate.name,
             intent=mandate.intent,
@@ -116,6 +126,8 @@ def analyze(program: Program) -> AnalysisReport:
             verify_count=verify_count,
             unverified_fields=unverified,
             estimated_llm_calls=synth_count,
+            budget_max_calls=budget_max,
+            budget_exceeded=budget_exceeded,
         )
         report.mandates.append(analysis)
         report.total_synthesize_calls += synth_count
@@ -125,6 +137,12 @@ def analyze(program: Program) -> AnalysisReport:
         if unverified:
             report.warnings.append(
                 f"'{mandate.name}': output fields {unverified} have no verify assertions"
+            )
+
+        if budget_exceeded:
+            report.warnings.append(
+                f"'{mandate.name}': budget exceeded — {synth_count} synthesize calls "
+                f"but max_calls is {budget_max}"
             )
 
     # Pipeline dependency analysis

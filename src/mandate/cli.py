@@ -33,7 +33,7 @@ def _read_source(file: str) -> str:
 
 
 @click.group()
-@click.version_option(version="0.2.0", prog_name="mandate")
+@click.version_option(version="0.4.0", prog_name="mandate")
 def main():
     """Mandate -- an agent-native programming language."""
     pass
@@ -258,6 +258,69 @@ def air(file: str, lineage: str | None):
 
 @main.command()
 @click.argument("file")
+@click.option("--input", "-i", "input_json", default=None, help="Input data as JSON string")
+@click.option("--snapshot", "-s", default=None, help="Path to .snap file for snapshot testing")
+@click.option("--update-snapshots", is_flag=True, help="Record LLM outputs to snapshot file")
+@click.option("--model", "-m", default="gpt-4o-mini", help="LLM model (only with --update-snapshots)")
+def test(file: str, input_json: str | None, snapshot: str | None,
+         update_snapshots: bool, model: str):
+    """Run all verify blocks as a test suite with mock synthesize."""
+    from .testing import run_test_suite, record_snapshots, MockConfig
+
+    input_data = json.loads(input_json) if input_json else None
+    snapshot_path = Path(snapshot) if snapshot else None
+
+    if update_snapshots:
+        console.print(f"[mandate.gold]Recording snapshots for {file}...[/]")
+        snaps = record_snapshots(file, input_data, model=model)
+        out_path = snapshot_path or Path(file).with_suffix(".snap")
+        out_path.write_text(json.dumps(snaps, indent=2, default=str), encoding="utf-8")
+        console.print(f"[mandate.ok]Saved {len(snaps)} snapshots to {out_path}[/]")
+        return
+
+    suite = run_test_suite(file, input_data, snapshot_file=snapshot_path)
+
+    if suite.parse_errors:
+        console.print(f"[mandate.fail]Parse errors in {file}:[/]")
+        for err in suite.parse_errors:
+            console.print(f"  [mandate.fail]x[/] {err}")
+        sys.exit(1)
+
+    for result in suite.results:
+        status = "[mandate.ok]PASS[/]" if result.ok else "[mandate.fail]FAIL[/]"
+        console.print(f"  {status} [mandate.gold]{result.mandate_name}[/] "
+                      f"[mandate.dim]({result.passed} passed, {result.failed} failed, "
+                      f"{result.errors} errors)[/]")
+
+        if result.type_errors:
+            for err in result.type_errors:
+                console.print(f"    [mandate.dim]![/] {err}")
+
+        if result.runtime_error:
+            console.print(f"    [mandate.fail]Runtime error:[/] {result.runtime_error}")
+
+        for v in result.details:
+            if not v.passed:
+                icon = "[mandate.fail]x[/]"
+                console.print(f"    {icon} {v.expression}: {v.error or v.actual_value}")
+
+    total_p = suite.total_passed
+    total_f = suite.total_failed
+    total_e = suite.total_errors
+    total = total_p + total_f + total_e
+
+    console.print()
+    if suite.all_passed:
+        console.print(f"[mandate.ok]{total} assertions passed across "
+                      f"{len(suite.results)} mandate(s).[/]")
+    else:
+        console.print(f"[mandate.fail]{total_f + total_e} failed, {total_p} passed "
+                      f"across {len(suite.results)} mandate(s).[/]")
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("file")
 @click.option("--write", "-w", is_flag=True, help="Write formatted output back to file")
 def fmt(file: str, write: bool):
     """Auto-format a .mdt file to canonical style."""
@@ -316,6 +379,7 @@ def analyze(file: str):
     table.add_column("Synth", justify="center")
     table.add_column("Verify", justify="center")
     table.add_column("Coverage", justify="center")
+    table.add_column("Budget", justify="center")
 
     for m in report.mandates:
         covered = len(m.output_fields) - len(m.unverified_fields)
@@ -327,6 +391,14 @@ def analyze(file: str):
         else:
             coverage = f"[mandate.fail]{covered}/{total}[/]"
 
+        if m.budget_max_calls is not None:
+            if m.budget_exceeded:
+                budget = f"[mandate.fail]{m.synthesize_count}/{m.budget_max_calls}[/]"
+            else:
+                budget = f"[mandate.ok]{m.synthesize_count}/{m.budget_max_calls}[/]"
+        else:
+            budget = "[mandate.dim]--[/]"
+
         table.add_row(
             m.name,
             str(len(m.input_fields)),
@@ -334,6 +406,7 @@ def analyze(file: str):
             str(m.synthesize_count),
             str(m.verify_count),
             coverage,
+            budget,
         )
 
     console.print(table)

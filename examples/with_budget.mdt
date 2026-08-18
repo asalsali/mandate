@@ -1,0 +1,23 @@
+mandate frugal_analysis {
+  intent: "Analyze with strict cost limits"
+
+  input: { topic: string }
+  output: { summary: string }
+
+  budget {
+    max_calls: 1
+  }
+
+  flow {
+    summary = synthesize {
+      given: input.topic
+      produce: string
+      instruction: "Write a one-paragraph summary"
+    }
+    return { summary: summary }
+  }
+
+  verify {
+    output.summary.length > 0
+  }
+}

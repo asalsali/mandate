@@ -8,6 +8,7 @@ from .ast_nodes import (
     ArrayType,
     Assignment,
     BinaryOp,
+    BudgetBlock,
     EnumType,
     FieldAccess,
     FunctionCall,
@@ -238,6 +239,7 @@ class Parser:
         flow: list[Any] = []
         verify: list[VerifyExpr] = []
         handoff: HandoffBlock | None = None
+        budget: BudgetBlock | None = None
 
         while not self.at(TokenType.RBRACE):
             if self.at(TokenType.INTENT):
@@ -274,6 +276,12 @@ class Parser:
                 self.skip_newlines()
                 handoff = self.parse_handoff_body()
                 self.expect(TokenType.RBRACE)
+            elif self.at(TokenType.BUDGET):
+                self.advance()
+                self.expect(TokenType.LBRACE)
+                self.skip_newlines()
+                budget = self.parse_budget_body()
+                self.expect(TokenType.RBRACE)
             else:
                 raise ParseError(
                     f"Unexpected token in mandate body: {self.current().value!r}",
@@ -291,6 +299,7 @@ class Parser:
             flow=flow,
             verify=verify,
             handoff=handoff,
+            budget=budget,
         )
 
     def parse_requires_decl(self) -> RequiresDecl:
@@ -636,6 +645,29 @@ class Parser:
             self.skip_newlines()
 
         return HandoffBlock(worked=worked, failed=failed, next_recommendation=next_rec)
+
+    def parse_budget_body(self) -> BudgetBlock:
+        """Parse the contents of a budget { ... } block."""
+        max_calls: int | None = None
+        max_tokens: int | None = None
+
+        while not self.at(TokenType.RBRACE):
+            if self.at(TokenType.MAX_CALLS):
+                self.advance()
+                self.expect(TokenType.COLON)
+                max_calls = int(self.expect(TokenType.NUMBER).value)
+            elif self.at(TokenType.MAX_TOKENS):
+                self.advance()
+                self.expect(TokenType.COLON)
+                max_tokens = int(self.expect(TokenType.NUMBER).value)
+            else:
+                raise ParseError(
+                    f"Unexpected token in budget: {self.current().value!r}",
+                    self.current(),
+                )
+            self.skip_newlines()
+
+        return BudgetBlock(max_calls=max_calls, max_tokens=max_tokens)
 
 
 def parse(tokens: list[Token]) -> Program:
