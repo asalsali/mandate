@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandate -- AI Code Review in One Command</title>
+    <style>
+        :root {
+            --gold: #c9a227;
+            --bg: #0d1117;
+            --surface: #161b22;
+            --text: #e6edf3;
+            --dim: #8b949e;
+            --green: #3fb950;
+            --red: #f85149;
+            --border: #30363d;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container { max-width: 900px; margin: 0 auto; padding: 0 24px; }
+
+        /* Hero */
+        .hero {
+            text-align: center;
+            padding: 80px 0 60px;
+        }
+        .hero h1 {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            color: var(--gold);
+        }
+        .hero p {
+            font-size: 20px;
+            color: var(--dim);
+            max-width: 600px;
+            margin: 0 auto 40px;
+        }
+        .install-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px 32px;
+            display: inline-block;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 16px;
+            color: var(--green);
+            margin-bottom: 12px;
+        }
+        .install-box span { color: var(--dim); }
+
+        /* Demo */
+        .demo {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 40px 0;
+        }
+        .demo h2 {
+            color: var(--gold);
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+        }
+        .demo pre {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            overflow-x: auto;
+            white-space: pre;
+        }
+        .demo .stage { color: var(--gold); font-weight: bold; }
+        .demo .pass { color: var(--green); }
+        .demo .fail { color: var(--red); }
+        .demo .dim { color: var(--dim); }
+        .demo .val { color: var(--text); }
+
+        /* Features */
+        .features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin: 60px 0;
+        }
+        .feature {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+        }
+        .feature h3 {
+            color: var(--gold);
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+        .feature p {
+            color: var(--dim);
+            font-size: 14px;
+        }
+        .feature code {
+            background: var(--bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: var(--text);
+        }
+
+        /* Pipeline */
+        .pipeline {
+            text-align: center;
+            margin: 60px 0;
+        }
+        .pipeline h2 {
+            font-size: 28px;
+            margin-bottom: 24px;
+        }
+        .pipeline-flow {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .pipeline-stage {
+            background: var(--surface);
+            border: 1px solid var(--gold);
+            border-radius: 8px;
+            padding: 16px 24px;
+            text-align: center;
+        }
+        .pipeline-stage h4 {
+            color: var(--gold);
+            font-size: 14px;
+        }
+        .pipeline-stage p {
+            color: var(--dim);
+            font-size: 12px;
+            margin-top: 4px;
+        }
+        .pipeline-arrow {
+            color: var(--dim);
+            font-size: 24px;
+        }
+
+        /* Code example */
+        .code-section {
+            margin: 60px 0;
+        }
+        .code-section h2 {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        .code-section > p {
+            color: var(--dim);
+            margin-bottom: 24px;
+        }
+        .code-block {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            overflow-x: auto;
+        }
+        .code-block pre {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .kw { color: var(--gold); }
+        .str { color: var(--green); }
+        .cmt { color: var(--dim); }
+        .num { color: #79c0ff; }
+
+        /* CLI */
+        .cli {
+            margin: 60px 0;
+        }
+        .cli h2 {
+            font-size: 28px;
+            margin-bottom: 24px;
+        }
+        .cli table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .cli td, .cli th {
+            padding: 10px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        .cli th {
+            color: var(--gold);
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .cli td:first-child {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 13px;
+            color: var(--green);
+            white-space: nowrap;
+        }
+        .cli td:last-child {
+            color: var(--dim);
+            font-size: 14px;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 40px 0;
+            color: var(--dim);
+            font-size: 14px;
+            border-top: 1px solid var(--border);
+            margin-top: 60px;
+        }
+        footer a { color: var(--gold); text-decoration: none; }
+
+        /* Nav */
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        nav .logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--gold);
+            text-decoration: none;
+        }
+        nav .links a {
+            color: var(--dim);
+            text-decoration: none;
+            margin-left: 24px;
+            font-size: 14px;
+        }
+        nav .links a:hover { color: var(--text); }
+
+        @media (max-width: 640px) {
+            .features { grid-template-columns: 1fr; }
+            .hero h1 { font-size: 32px; }
+            .pipeline-flow { flex-direction: column; }
+            .pipeline-arrow { transform: rotate(90deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <a href="/" class="logo">Mandate</a>
+            <div class="links">
+                <a href="https://github.com/asalsali/mandate">GitHub</a>
+                <a href="https://pypi.org/project/mandate-lang/">PyPI</a>
+                <a href="#language">Language</a>
+                <a href="#cli-ref">CLI</a>
+            </div>
+        </nav>
+
+        <div class="hero">
+            <h1>Mandate</h1>
+            <p>AI code review on every commit. Type-checked pipelines that catch security issues before they reach your repo.</p>
+            <div class="install-box">
+                <span>$</span> pip install mandate-lang
+            </div>
+            <br>
+            <div class="install-box">
+                <span>$</span> mandate hook install
+            </div>
+        </div>
+
+        <div class="demo">
+            <h2>What happens when you commit</h2>
+            <pre><span class="dim">$ git commit -m "add admin endpoint"</span>
+
+<span class="stage">analyze_diff</span>
+  <span class="dim">change_type:</span> <span class="val">feature</span>
+  <span class="dim">complexity:</span> <span class="val">simple</span>
+  <span class="dim">summary:</span> <span class="val">Added an admin route to execute shell commands.</span>
+  <span class="dim">verify:</span> <span class="pass">4/4 passed</span>
+
+<span class="stage">scan_security</span>
+  <span class="dim">issues_found:</span> <span class="fail">3</span>
+  <span class="dim">severity:</span> <span class="fail">critical</span>
+  <span class="dim">findings:</span>
+    <span class="fail">- Hardcoded secret: API key found.</span>
+    <span class="fail">- Command injection via unsanitized input.</span>
+    <span class="fail">- Missing input validation for command execution.</span>
+  <span class="dim">verify:</span> <span class="pass">2/2 passed</span>
+
+<span class="stage">generate_review</span>
+  <span class="dim">verdict:</span> <span class="fail">request_changes</span>
+  <span class="dim">risk_level:</span> <span class="fail">high</span>
+  <span class="dim">suggestions:</span>
+    <span class="val">- Remove hardcoded API key, use environment variables.</span>
+    <span class="val">- Sanitize input to prevent command injection.</span>
+    <span class="val">- Use subprocess with proper arguments.</span>
+  <span class="dim">verify:</span> <span class="pass">4/4 passed</span>
+
+<span class="pass">Pipeline complete: 3 stages, all passed.</span></pre>
+        </div>
+
+        <div class="pipeline">
+            <h2>3-Stage Pipeline</h2>
+            <div class="pipeline-flow">
+                <div class="pipeline-stage">
+                    <h4>Diff Analysis</h4>
+                    <p>Classify change type,<br>count lines, assess complexity</p>
+                </div>
+                <div class="pipeline-arrow">&rarr;</div>
+                <div class="pipeline-stage">
+                    <h4>Security Scan</h4>
+                    <p>Secrets, injection, XSS,<br>path traversal, permissions</p>
+                </div>
+                <div class="pipeline-arrow">&rarr;</div>
+                <div class="pipeline-stage">
+                    <h4>Code Review</h4>
+                    <p>Verdict, suggestions,<br>risk assessment</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <h3>Type-Checked Pipelines</h3>
+                <p><code>mandate check</code> verifies that stage outputs match downstream inputs at compile time. Catch mismatches before spending LLM tokens.</p>
+            </div>
+            <div class="feature">
+                <h3>Static Analysis</h3>
+                <p><code>mandate analyze</code> reports token cost, verify coverage, dead stages, and dependency graphs. Whole-program analysis no Python framework can do.</p>
+            </div>
+            <div class="feature">
+                <h3>Test Without LLM</h3>
+                <p><code>mandate test --pipeline</code> runs the full pipeline with mock providers. CI-friendly, no API key, deterministic.</p>
+            </div>
+            <div class="feature">
+                <h3>Budget Enforcement</h3>
+                <p><code>budget { max_calls: 1 }</code> per stage. The analyzer catches violations before execution. No runaway LLM costs.</p>
+            </div>
+            <div class="feature">
+                <h3>Import System</h3>
+                <p><code>import scan from "./scanner.mdt"</code> composes mandates across files. Build libraries of reusable AI workflow stages.</p>
+            </div>
+            <div class="feature">
+                <h3>Any LLM</h3>
+                <p>Works with OpenAI, Ollama, vLLM, or any OpenAI-compatible API. Not locked to a provider.</p>
+            </div>
+        </div>
+
+        <div class="code-section" id="language">
+            <h2>The Language</h2>
+            <p>Each pipeline stage is a <code>.mdt</code> file with typed inputs, LLM synthesis blocks, and verification assertions.</p>
+            <div class="code-block">
+<pre><span class="kw">mandate</span> scan_security {
+  <span class="kw">intent:</span> <span class="str">"Scan a diff for security issues"</span>
+
+  <span class="kw">input:</span>  { diff: string, file_path: string }
+  <span class="kw">output:</span> { issues_found: int, severity: string, findings: string }
+
+  <span class="kw">budget</span> { max_calls: <span class="num">1</span> }
+
+  <span class="kw">flow</span> {
+    scan = <span class="kw">synthesize</span> {
+      <span class="kw">given:</span> input.diff, input.file_path
+      <span class="kw">produce:</span> { issues_found: int, severity: string, findings: string }
+      <span class="kw">instruction:</span> <span class="str">"Scan for secrets, injection, XSS, path traversal..."</span>
+    }
+    <span class="kw">return</span> { issues_found: scan.issues_found, severity: scan.severity, findings: scan.findings }
+  }
+
+  <span class="kw">verify</span> {
+    output.issues_found >= <span class="num">0</span>
+    output.findings.length > <span class="num">0</span>
+  }
+}</pre>
+            </div>
+        </div>
+
+        <div class="cli" id="cli-ref">
+            <h2>CLI Reference</h2>
+            <table>
+                <tr><th>Command</th><th>Description</th></tr>
+                <tr><td>mandate hook install</td><td>Install pre-commit git hook</td></tr>
+                <tr><td>mandate hook uninstall</td><td>Remove git hook</td></tr>
+                <tr><td>mandate check &lt;file&gt;</td><td>Type-check including cross-stage pipeline types</td></tr>
+                <tr><td>mandate analyze &lt;file&gt;</td><td>Static analysis: dependency graph, token cost, verify coverage</td></tr>
+                <tr><td>mandate test &lt;file&gt; --pipeline</td><td>Test with mock LLM (no API key, CI-friendly)</td></tr>
+                <tr><td>mandate run &lt;file&gt; --pipeline</td><td>Execute with real LLM</td></tr>
+                <tr><td>mandate fmt &lt;file&gt; --write</td><td>Auto-format to canonical style</td></tr>
+                <tr><td>mandate parse &lt;file&gt;</td><td>Display AST</td></tr>
+                <tr><td>mandate transpile &lt;file&gt;</td><td>Generate Python</td></tr>
+                <tr><td>mandate air &lt;file&gt;</td><td>Output AIR JSON</td></tr>
+            </table>
+        </div>
+
+        <footer>
+            <p>MIT License. Built by <a href="https://github.com/asalsali">Alex Salsali</a>.</p>
+            <p style="margin-top: 8px;"><a href="https://github.com/asalsali/mandate">GitHub</a> &middot; <a href="https://pypi.org/project/mandate-lang/">PyPI</a></p>
+        </footer>
+    </div>
+</body>
+</html>

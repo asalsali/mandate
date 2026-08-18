@@ -1,8 +1,106 @@
 # Mandate
 
-An agent-native programming language for composable, verifiable AI workflows.
+AI code review on every commit. One command.
 
-Mandate lets you define structured AI tasks with built-in type checking, LLM synthesis, verification assertions, and handoff metadata -- all in a single `.mdt` file.
+```bash
+pip install mandate-lang
+cd your-project
+mandate hook install
+```
+
+Every commit now gets an AI code review that catches security issues, code quality problems, and missing validations -- before the code reaches your repo.
+
+## What it does
+
+Mandate runs a 3-stage pipeline on your staged changes:
+
+```
+Diff Analysis  -->  Security Scan  -->  Code Review
+(classify change)   (find vulns)       (verdict + suggestions)
+```
+
+Each stage is type-checked against the next. If the security scanner finds a hardcoded API key or command injection, the review stage knows about it. If any stage's assertions fail, the commit is blocked.
+
+```
+$ git commit -m "add admin endpoint"
+
+============================================================
+  analyze_diff
+============================================================
+  change_type: feature
+  complexity: simple
+  summary: Added an admin route to execute shell commands.
+  verify: 4/4 passed
+
+============================================================
+  scan_security
+============================================================
+  issues_found: 3
+  severity: critical
+  findings:
+    - Hardcoded secret: API key found.
+    - Command injection vulnerability via unsanitized input.
+    - Missing input validation for command execution.
+  verify: 2/2 passed
+
+============================================================
+  generate_review
+============================================================
+  verdict: request_changes
+  risk_level: high
+  review: The admin route poses significant security risks...
+  suggestions:
+    - Remove hardcoded API key, use environment variables.
+    - Sanitize input to prevent command injection.
+    - Use subprocess with proper arguments.
+  verify: 4/4 passed
+
+Pipeline complete: 3 stages, all passed.
+```
+
+## How it works
+
+Mandate is a programming language for AI workflows. Each stage in the pipeline is a `.mdt` file with typed inputs, typed outputs, LLM synthesis blocks, and verification assertions.
+
+The language catches errors at compile time -- before any LLM tokens are spent:
+
+```bash
+# Type-check the pipeline (are outputs compatible with downstream inputs?)
+mandate check review.mdt
+
+# Static analysis (token cost, verify coverage, dead stages)
+mandate analyze review.mdt
+
+# Test with mock LLM (no API key needed, runs in CI)
+mandate test review.mdt --pipeline
+```
+
+### Example mandate
+
+```
+mandate scan_security {
+  intent: "Scan a diff for security issues"
+
+  input: { diff: string, file_path: string }
+  output: { issues_found: int, severity: string, findings: string }
+
+  budget { max_calls: 1 }
+
+  flow {
+    scan = synthesize {
+      given: input.diff, input.file_path
+      produce: { issues_found: int, severity: string, findings: string }
+      instruction: "Scan for hardcoded secrets, injection, XSS, path traversal..."
+    }
+    return { issues_found: scan.issues_found, severity: scan.severity, findings: scan.findings }
+  }
+
+  verify {
+    output.issues_found >= 0
+    output.findings.length > 0
+  }
+}
+```
 
 ## Install
 
@@ -10,222 +108,47 @@ Mandate lets you define structured AI tasks with built-in type checking, LLM syn
 pip install mandate-lang
 ```
 
-From source:
+Requires Python 3.10+. For LLM features, set `OPENAI_API_KEY`. For testing and static analysis, no API key needed.
+
+### Local LLM (Ollama)
 
 ```bash
-git clone https://github.com/asalsali/mandate.git
-cd mandate
-pip install -e ".[dev]"
+mandate run review.mdt --pipeline --model codellama:34b
 ```
 
-## Quick Start
-
-Create `hello.mdt`:
+## CLI
 
 ```
-mandate hello {
-  intent: "Greet a user by name"
-
-  input: { name: string }
-  output: { greeting: string }
-
-  flow {
-    greeting = synthesize {
-      given: input.name
-      produce: string
-      instruction: "Write a warm, friendly greeting for this person by name"
-    }
-    return { greeting: greeting }
-  }
-
-  verify {
-    output.greeting.length > 0
-  }
-}
+mandate check <file>              Type-check (including cross-stage pipeline types)
+mandate analyze <file>            Static analysis: dependency graph, token cost, coverage
+mandate test <file> [--pipeline]  Run verify blocks with mock LLM (CI-friendly)
+mandate run <file> [--pipeline]   Execute with real LLM
+mandate fmt <file> [--write]      Auto-format to canonical style
+mandate hook install              Install pre-commit git hook
+mandate hook uninstall            Remove hook
+mandate parse <file>              Display AST
+mandate transpile <file>          Generate Python
+mandate air <file>                Output AIR JSON
 ```
 
-Run it:
+## Language features
 
-```bash
-mandate run hello.mdt --input '{"name": "Alice"}'
-```
-
-## Language Reference
-
-### Mandate Block
-
-Every `.mdt` file contains one or more `mandate` blocks:
-
-```
-mandate <name> {
-  intent: "<human-readable description>"
-  input: { <field>: <type>, ... }
-  output: { <field>: <type>, ... }
-  requires: <function>(<param>: <type>, ...) -> <return_type>
-  flow { ... }
-  verify { ... }
-  handoff { ... }
-}
-```
-
-### Types
-
-| Type | Syntax | Example |
-|------|--------|---------|
-| Primitives | `string`, `int`, `float`, `bool` | `name: string` |
-| Arrays | `T[]` | `numbers: int[]` |
-| Optionals | `T?` | `note: string?` |
-| Records | `{ field: type, ... }` | `{ x: int, y: int }` |
-
-### Flow Blocks
-
-Flow blocks contain the mandate's executable logic:
-
-```
-flow {
-  x = 42
-  y = sort(input.numbers)
-  if input.x > 10 {
-    return { label: "big" }
-  } else {
-    return { label: "small" }
-  }
-}
-```
-
-Supported statements: assignments, `return { ... }`, `if`/`else`.
-
-Built-in functions: `len`, `sort`, `str`, `int`, `float`, `abs`.
-
-### Synthesize Blocks
-
-Synthesize blocks call an LLM to generate output:
-
-```
-result = synthesize {
-  given: input.name, input.context
-  produce: string
-  instruction: "Generate a summary based on the given data"
-}
-```
-
-- `given` -- expressions passed as context to the LLM
-- `produce` -- the expected output type
-- `instruction` -- the prompt sent to the LLM
-
-When no `OPENAI_API_KEY` is set, synthesize runs in **stub mode** and returns plausible defaults for testing.
-
-### Requires
-
-Declare external function dependencies:
-
-```
-requires: fetch_price(symbol: string) -> float
-```
-
-External functions are injected at runtime via the `external_functions` parameter.
-
-### Verify Blocks
-
-Boolean assertions checked against the mandate's output:
-
-```
-verify {
-  output.score > 0.5
-  output.score in 0.0..1.0
-  output.summary.length > 0
-  output.tags contains "important"
-}
-```
-
-Supported operators: `==`, `!=`, `>`, `<`, `>=`, `<=`, `and`, `or`, `not`, `contains`, `in` (with range `low..high`).
-
-### Handoff Blocks
-
-Structured metadata for agent coordination:
-
-```
-handoff {
-  worked: "Found relevant data in 3 sources"
-  failed: "API rate limit hit on source 4"
-  next: "Deep dive into source 2 findings"
-}
-```
-
-## CLI Commands
-
-### `mandate parse <file>`
-
-Display the AST structure of a `.mdt` file.
-
-### `mandate check <file>`
-
-Type-check and validate a `.mdt` file. Reports missing intents, undefined variables, output field mismatches, and unknown functions. For multi-mandate files, also verifies cross-mandate type compatibility (output fields of mandate N must cover input fields of mandate N+1).
-
-### `mandate transpile <file>`
-
-Generate equivalent Python code from a `.mdt` file.
-
-### `mandate run <file> [--input JSON] [--model NAME] [--pipeline]`
-
-Execute a `.mdt` file end-to-end: lex, parse, type-check, run flow, call LLM for synthesize blocks, and evaluate verify assertions.
-
-```bash
-mandate run sort_array.mdt --input '{"numbers": [3, 1, 2]}'
-```
-
-With `--pipeline`, run all mandates in the file as a chained pipeline -- output of mandate N is merged into the input of mandate N+1:
-
-```bash
-mandate run pipeline.mdt --input '{"source": "sales", "question": "trend?"}' --pipeline
-```
-
-### `mandate analyze <file>`
-
-Static analysis: dependency graph, token cost estimate, verify coverage, dead mandate detection. This is whole-program analysis that catches issues before any LLM tokens are spent.
-
-```bash
-mandate analyze pipeline.mdt
-```
-
-Reports:
-- Per-mandate synthesize count and verify coverage
-- Pipeline data dependencies (which fields flow between mandates)
-- Estimated LLM calls
-- Dead mandates (output never consumed downstream)
-- Unverified output fields
-
-### `mandate air <file> [--lineage JSON]`
-
-Output the Agent Intermediate Representation (AIR) -- a JSON serialization of the mandate's AST, verification results, and lineage metadata.
-
-```bash
-mandate air hello.mdt --lineage '{"author": "alex", "generation": 1}'
-```
-
-## AIR (Agent Intermediate Representation)
-
-AIR is a JSON format that serializes mandates for agent consumption:
-
-- **version** -- schema version (`air-1.0`)
-- **mandate** -- name and intent
-- **lineage** -- author, generation, parent chain
-- **ast** -- full AST (input/output types, flow statements, verify expressions)
-- **verification** -- pass/fail counts and per-assertion results
-- **confidence** -- ratio of passed assertions
-- **handoff** -- structured coordination metadata
-
-AIR enables agents to consume, transform, and chain mandates programmatically.
+- **Types**: `string`, `int`, `float`, `bool`, `T[]`, `T?`, `{ field: type }`, `enum`, `A | B`
+- **Imports**: `import scan from "./scanner.mdt"`
+- **Pipeline chaining**: output of stage N flows into input of stage N+1
+- **Budgets**: `budget { max_calls: 3 }` -- enforced at analysis time
+- **Verify assertions**: `output.score in 0.0..1.0`, `output.data contains "expected"`
+- **Handoff metadata**: structured agent-to-agent coordination
+- **Multi-error parser**: reports all errors, not just the first
+- **Snapshot testing**: record LLM outputs, replay without API calls
 
 ## Testing
 
 ```bash
 pip install -e ".[dev]"
-pytest tests/ -v
+pytest tests/ -v   # 168 tests
 ```
-
-106 tests covering lexer, parser, type checker, transpiler, AIR serializer, runner, verify engine, pipeline execution, and static analyzer.
 
 ## License
 
-MIT License. Copyright (c) 2026 Alex Salsali.
+MIT. Copyright (c) 2026 Alex Salsali.
