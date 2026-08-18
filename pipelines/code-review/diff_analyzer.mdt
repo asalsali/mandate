@@ -1,0 +1,50 @@
+mandate analyze_diff {
+  intent: "Parse a code diff and extract structured metadata"
+
+  input: {
+    diff: string,
+    file_path: string
+  }
+  output: {
+    files_changed: int,
+    lines_added: int,
+    lines_removed: int,
+    change_type: string,
+    complexity: string,
+    summary: string
+  }
+
+  budget {
+    max_calls: 1
+  }
+
+  flow {
+    analysis = synthesize {
+      given: input.diff, input.file_path
+      produce: {
+        files_changed: int,
+        lines_added: int,
+        lines_removed: int,
+        change_type: string,
+        complexity: string,
+        summary: string
+      }
+      instruction: "Analyze this git diff. Return JSON with: files_changed (count of files modified), lines_added (total + lines), lines_removed (total - lines), change_type (one of: bugfix, feature, refactor, test, docs, config), complexity (one of: trivial, simple, moderate, complex), summary (one sentence describing the change). Be precise — count actual diff lines."
+    }
+    return {
+      files_changed: analysis.files_changed,
+      lines_added: analysis.lines_added,
+      lines_removed: analysis.lines_removed,
+      change_type: analysis.change_type,
+      complexity: analysis.complexity,
+      summary: analysis.summary
+    }
+  }
+
+  verify {
+    output.files_changed > 0
+    output.lines_added >= 0
+    output.lines_removed >= 0
+    output.summary.length > 0
+  }
+}

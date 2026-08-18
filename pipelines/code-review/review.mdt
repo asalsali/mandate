@@ -1,0 +1,55 @@
+import analyze_diff from "./diff_analyzer.mdt"
+import scan_security from "./security_scanner.mdt"
+
+mandate generate_review {
+  intent: "Generate a structured code review from diff analysis and security scan"
+
+  input: {
+    summary: string,
+    change_type: string,
+    complexity: string,
+    lines_added: int,
+    lines_removed: int,
+    issues_found: int,
+    severity: string,
+    findings: string,
+    safe: string,
+    diff: string
+  }
+  output: {
+    verdict: string,
+    review: string,
+    suggestions: string,
+    risk_level: string
+  }
+
+  budget {
+    max_calls: 1
+  }
+
+  flow {
+    result = synthesize {
+      given: input.summary, input.change_type, input.complexity, input.findings, input.severity, input.safe, input.diff
+      produce: {
+        verdict: string,
+        review: string,
+        suggestions: string,
+        risk_level: string
+      }
+      instruction: "Generate a code review. You are a senior engineer reviewing a pull request. Given the diff analysis summary, change type, complexity, and security findings, produce JSON with: verdict (one of: approve, request_changes, comment), review (2-4 sentences covering code quality, correctness, and maintainability), suggestions (bullet-point list of specific improvements, or 'No suggestions'), risk_level (one of: low, medium, high — based on complexity + security severity). Be direct and specific. Reference actual code from the diff when possible."
+    }
+    return {
+      verdict: result.verdict,
+      review: result.review,
+      suggestions: result.suggestions,
+      risk_level: result.risk_level
+    }
+  }
+
+  verify {
+    output.review.length > 10
+    output.suggestions.length > 0
+    output.verdict.length > 0
+    output.risk_level.length > 0
+  }
+}

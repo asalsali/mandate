@@ -183,9 +183,12 @@ def _test_mandate(
             if fname not in test_input:
                 test_input[fname] = mock_synthesize(ftype, {}, "", config)
 
-    # Patch synthesize_call to use mocks
+    # Patch synthesize_call in both the synthesize module and the runner module
+    # (runner imports it directly, so we must patch both references)
     import mandate.synthesize as synth_module
-    original = synth_module.synthesize_call
+    import mandate.runner as runner_module
+    original_synth = synth_module.synthesize_call
+    original_runner = runner_module.synthesize_call
     synth_counter = [0]
 
     def mock_call(given, produce_type, instruction, model="mock"):
@@ -195,13 +198,15 @@ def _test_mandate(
 
     try:
         synth_module.synthesize_call = mock_call
+        runner_module.synthesize_call = mock_call
         runner = MandateRunner(model="mock")
         run_result = runner.run_mandate(mandate, test_input)
     except Exception as e:
         result.runtime_error = str(e)
         return result
     finally:
-        synth_module.synthesize_call = original
+        synth_module.synthesize_call = original_synth
+        runner_module.synthesize_call = original_runner
 
     if run_result.runtime_error:
         result.runtime_error = run_result.runtime_error

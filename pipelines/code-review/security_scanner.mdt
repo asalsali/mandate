@@ -1,0 +1,43 @@
+mandate scan_security {
+  intent: "Scan a diff for security issues"
+
+  input: {
+    diff: string,
+    file_path: string,
+    change_type: string
+  }
+  output: {
+    issues_found: int,
+    severity: string,
+    findings: string,
+    safe: string
+  }
+
+  budget {
+    max_calls: 1
+  }
+
+  flow {
+    scan = synthesize {
+      given: input.diff, input.file_path, input.change_type
+      produce: {
+        issues_found: int,
+        severity: string,
+        findings: string,
+        safe: string
+      }
+      instruction: "Scan this diff for security issues. Check for: hardcoded secrets (API keys, passwords, tokens), SQL injection, XSS, command injection, path traversal, insecure deserialization, missing input validation, overly permissive CORS/permissions. Return JSON with: issues_found (integer count), severity (one of: none, low, medium, high, critical), findings (bullet-point list of issues found, or 'No issues found'), safe (yes or no)."
+    }
+    return {
+      issues_found: scan.issues_found,
+      severity: scan.severity,
+      findings: scan.findings,
+      safe: scan.safe
+    }
+  }
+
+  verify {
+    output.issues_found >= 0
+    output.findings.length > 0
+  }
+}
