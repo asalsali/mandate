@@ -1,0 +1,17 @@
+mandate sort_array {
+  intent: "Sort an integer array in ascending order"
+
+  input: { numbers: int[] }
+  output: { sorted: int[], count: int }
+
+  flow {
+    sorted = sort(input.numbers)
+    count = len(input.numbers)
+    return { sorted: sorted, count: count }
+  }
+
+  verify {
+    output.count == len(input.numbers)
+    output.sorted.length == input.numbers.length
+  }
+}

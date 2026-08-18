@@ -1,0 +1,19 @@
+mandate hello {
+  intent: "Greet a user by name"
+
+  input: { name: string }
+  output: { greeting: string }
+
+  flow {
+    greeting = synthesize {
+      given: input.name
+      produce: string
+      instruction: "Write a warm, friendly greeting for this person by name"
+    }
+    return { greeting: greeting }
+  }
+
+  verify {
+    output.greeting.length > 0
+  }
+}

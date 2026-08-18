@@ -1,0 +1,29 @@
+mandate research_topic {
+  intent: "Research a topic and produce structured findings"
+
+  input: { topic: string, depth: string }
+  output: { summary: string, sources: int, confidence: float }
+
+  flow {
+    summary = synthesize {
+      given: input.topic, input.depth
+      produce: string
+      instruction: "Research this topic at the specified depth and produce a structured summary"
+    }
+    sources = 5
+    confidence = 0.80
+    return { summary: summary, sources: sources, confidence: confidence }
+  }
+
+  verify {
+    output.summary.length > 0
+    output.sources > 0
+    output.confidence in 0.0..1.0
+  }
+
+  handoff {
+    worked: "research completed with structured findings"
+    failed: "source verification not implemented yet"
+    next: "add citation extraction and fact-checking against known databases"
+  }
+}

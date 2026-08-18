@@ -1,0 +1,30 @@
+mandate crypto_analyzer {
+  intent: "Analyze cryptocurrency market trends"
+
+  input: { symbols: string[], timeframe: string }
+  output: { analysis: string, confidence: float }
+
+  requires: fetch_prices(symbols: string[]) -> string
+
+  flow {
+    prices = fetch_prices(input.symbols)
+    analysis = synthesize {
+      given: prices, input.timeframe
+      produce: string
+      instruction: "Analyze market trends for these assets over the given timeframe"
+    }
+    confidence = 0.85
+    return { analysis: analysis, confidence: confidence }
+  }
+
+  verify {
+    output.confidence in 0.0..1.0
+    output.analysis.length > 0
+  }
+
+  handoff {
+    worked: "price fetch and analysis complete"
+    failed: "none"
+    next: "consider adding sentiment data from social media"
+  }
+}
