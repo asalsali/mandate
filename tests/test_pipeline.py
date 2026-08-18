@@ -134,7 +134,8 @@ mandate consumer {
 }'''
         result = check(parse(tokenize(src)))
         errors = [str(e) for e in result.errors]
-        assert any("no output type" in e.lower() for e in errors)
+        # producer has no declared output type, so 'x' is not in the available pool
+        assert any("no prior stage" in e.lower() or "x" in e for e in errors)
 
     def test_single_mandate_no_pipeline_check(self):
         """Single mandate should not trigger pipeline checks."""

@@ -258,46 +258,42 @@ def check(program: Program) -> TypeCheckResult:
 def _check_pipeline_types(program: Program, result: TypeCheckResult) -> None:
     """Check cross-mandate type compatibility in a pipeline.
 
-    For each consecutive pair of mandates, verify that the output fields
-    of mandate N cover the input fields required by mandate N+1.
+    Tracks cumulative available fields: initial input fields from mandate 0
+    plus all output fields from stages 0..N are available to stage N+1.
+    Only warns when a field is truly unavailable — not when it comes from
+    an earlier stage or the initial input.
     """
-    for i in range(len(program.mandates) - 1):
-        producer = program.mandates[i]
-        consumer = program.mandates[i + 1]
-        ctx = f"pipeline {producer.name} -> {consumer.name}"
+    # Start with the first mandate's input fields as "initially available"
+    available: dict[str, Any] = {}
+    first = program.mandates[0]
+    if first.input_type:
+        for fname, ftype in first.input_type.fields.items():
+            available[fname] = ftype
 
-        if not consumer.input_type:
-            continue  # Consumer takes no input — always compatible
+    for i in range(len(program.mandates)):
+        mandate = program.mandates[i]
 
-        if not producer.output_type:
-            result.add(
-                f"'{producer.name}' has no output type but "
-                f"'{consumer.name}' expects input fields: "
-                f"{list(consumer.input_type.fields.keys())}",
-                ctx,
-            )
-            continue
-
-        # Check that every field consumer needs is produced by producer
-        # (or was in the original input — we can't know that statically,
-        # so we only warn on fields the producer doesn't provide)
-        produced = set(producer.output_type.fields.keys())
-        for field_name, field_type in consumer.input_type.fields.items():
-            if field_name not in produced:
-                result.add(
-                    f"'{consumer.name}' expects input field '{field_name}' "
-                    f"but '{producer.name}' does not output it "
-                    f"(must be provided in initial input or by an earlier stage)",
-                    ctx,
-                )
-
-            # Type compatibility check
-            elif field_name in producer.output_type.fields:
-                out_type = producer.output_type.fields[field_name]
-                if repr(out_type) != repr(field_type):
+        # Check that this mandate's required inputs are available
+        if i > 0 and mandate.input_type:
+            ctx = f"pipeline -> {mandate.name}"
+            for field_name, field_type in mandate.input_type.fields.items():
+                if field_name not in available:
                     result.add(
-                        f"Type mismatch: '{producer.name}' outputs "
-                        f"'{field_name}' as {out_type} but '{consumer.name}' "
-                        f"expects {field_type}",
+                        f"'{mandate.name}' expects input field '{field_name}' "
+                        f"but no prior stage or initial input provides it",
                         ctx,
                     )
+                elif field_name in available:
+                    # Type compatibility check
+                    avail_type = available[field_name]
+                    if avail_type is not None and repr(avail_type) != repr(field_type):
+                        result.add(
+                            f"Type mismatch: '{field_name}' is available as "
+                            f"{avail_type} but '{mandate.name}' expects {field_type}",
+                            ctx,
+                        )
+
+        # Add this mandate's output fields to available pool
+        if mandate.output_type:
+            for fname, ftype in mandate.output_type.fields.items():
+                available[fname] = ftype

@@ -126,11 +126,13 @@ def run_test_suite(
     input_data: dict | None = None,
     mock_config: MockConfig | None = None,
     snapshot_file: Path | None = None,
+    pipeline: bool = False,
 ) -> TestSuiteResult:
     """Run all mandates in a file as a test suite.
 
-    Each mandate is tested independently with mock synthesize.
-    Verify blocks are the assertions.
+    Each mandate is tested independently with mock synthesize unless
+    pipeline=True, in which case output of mandate N is merged into
+    input of mandate N+1 (matching run_pipeline behavior).
     """
     path = Path(mdt_file)
     source = path.read_text(encoding="utf-8")
@@ -143,6 +145,16 @@ def run_test_suite(
         suite.parse_errors.append(str(e))
         return suite
 
+    # Resolve imports
+    if program.imports:
+        from .runner import _resolve_imports
+        try:
+            imported = _resolve_imports(program, path.parent)
+            program.mandates = imported + program.mandates
+        except Exception as e:
+            suite.parse_errors.append(str(e))
+            return suite
+
     # Load snapshots if available
     snapshots: dict | None = None
     if snapshot_file and snapshot_file.exists():
@@ -151,13 +163,56 @@ def run_test_suite(
     tc_result = check(program)
 
     cfg = mock_config or MockConfig()
-    input_base = input_data or {}
+    current_input = dict(input_data or {})
 
     for mandate in program.mandates:
-        test_result = _test_mandate(mandate, input_base, cfg, tc_result, snapshots)
+        test_result = _test_mandate(mandate, current_input, cfg, tc_result, snapshots)
         suite.results.append(test_result)
 
+        if pipeline and test_result.ok:
+            # Merge mock output into input for next stage
+            # (find the output from the run result details)
+            current_input = {**current_input, **_extract_mock_output(mandate, cfg, current_input, snapshots)}
+        elif pipeline and not test_result.ok:
+            break  # Stop pipeline on failure
+
     return suite
+
+
+def _extract_mock_output(
+    mandate: MandateBlock,
+    config: MockConfig,
+    input_data: dict,
+    snapshots: dict | None,
+) -> dict:
+    """Run a mandate with mocks and return its output dict."""
+    import mandate.synthesize as synth_module
+    import mandate.runner as runner_module
+    original_synth = synth_module.synthesize_call
+    original_runner = runner_module.synthesize_call
+    synth_counter = [0]
+
+    def mock_call(given, produce_type, instruction, model="mock"):
+        key = _make_snapshot_key(mandate.name, synth_counter[0])
+        synth_counter[0] += 1
+        return mock_synthesize(produce_type, given, instruction, config, snapshots, key)
+
+    # Build input with mock defaults
+    test_input = dict(input_data)
+    if mandate.input_type:
+        for fname, ftype in mandate.input_type.fields.items():
+            if fname not in test_input:
+                test_input[fname] = mock_synthesize(ftype, {}, "", config)
+
+    try:
+        synth_module.synthesize_call = mock_call
+        runner_module.synthesize_call = mock_call
+        runner = MandateRunner(model="mock")
+        result = runner.run_mandate(mandate, test_input)
+        return result.output
+    finally:
+        synth_module.synthesize_call = original_synth
+        runner_module.synthesize_call = original_runner
 
 
 def _test_mandate(

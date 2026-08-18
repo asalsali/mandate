@@ -262,8 +262,9 @@ def air(file: str, lineage: str | None):
 @click.option("--snapshot", "-s", default=None, help="Path to .snap file for snapshot testing")
 @click.option("--update-snapshots", is_flag=True, help="Record LLM outputs to snapshot file")
 @click.option("--model", "-m", default="gpt-4o-mini", help="LLM model (only with --update-snapshots)")
+@click.option("--pipeline", "-p", is_flag=True, help="Chain mandates: output of N feeds into N+1")
 def test(file: str, input_json: str | None, snapshot: str | None,
-         update_snapshots: bool, model: str):
+         update_snapshots: bool, model: str, pipeline: bool):
     """Run all verify blocks as a test suite with mock synthesize."""
     from .testing import run_test_suite, record_snapshots, MockConfig
 
@@ -278,7 +279,7 @@ def test(file: str, input_json: str | None, snapshot: str | None,
         console.print(f"[mandate.ok]Saved {len(snaps)} snapshots to {out_path}[/]")
         return
 
-    suite = run_test_suite(file, input_data, snapshot_file=snapshot_path)
+    suite = run_test_suite(file, input_data, snapshot_file=snapshot_path, pipeline=pipeline)
 
     if suite.parse_errors:
         console.print(f"[mandate.fail]Parse errors in {file}:[/]")
@@ -437,6 +438,39 @@ def analyze(file: str):
 
     if not report.warnings and not report.dead_mandates:
         console.print(f"\n[mandate.ok]No issues found.[/]")
+
+
+@main.group()
+def hook():
+    """Manage git hooks for Mandate pipelines."""
+    pass
+
+
+@hook.command()
+@click.option("--pipeline", "-p", default=None, help="Path to .mdt pipeline file")
+def install(pipeline: str | None):
+    """Install a pre-commit hook that runs Mandate code review."""
+    from .hooks import install_hook
+
+    success, message = install_hook(pipeline)
+    if success:
+        console.print(f"[mandate.ok]{message}[/]")
+    else:
+        console.print(f"[mandate.fail]{message}[/]")
+        sys.exit(1)
+
+
+@hook.command()
+def uninstall():
+    """Remove the Mandate pre-commit hook."""
+    from .hooks import uninstall_hook
+
+    success, message = uninstall_hook()
+    if success:
+        console.print(f"[mandate.ok]{message}[/]")
+    else:
+        console.print(f"[mandate.fail]{message}[/]")
+        sys.exit(1)
 
 
 def _format_ast(mandate) -> str:
