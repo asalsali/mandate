@@ -1,0 +1,21 @@
+import fetch_data from "./imported_helper.mdt"
+
+mandate analyze_imported {
+  intent: "Analyze data from imported fetch"
+
+  input: { data: string, question: string }
+  output: { answer: string }
+
+  flow {
+    answer = synthesize {
+      given: input.data, input.question
+      produce: string
+      instruction: "Answer the question based on the data"
+    }
+    return { answer: answer }
+  }
+
+  verify {
+    output.answer.length > 0
+  }
+}

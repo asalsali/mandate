@@ -110,7 +110,8 @@ mandate b {
 
 
 def test_parse_error_missing_brace():
-    with pytest.raises(ParseError):
+    from mandate.parser import MultiParseError
+    with pytest.raises((ParseError, MultiParseError)):
         _parse_source("mandate broken {")
 
 

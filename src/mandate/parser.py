@@ -8,11 +8,13 @@ from .ast_nodes import (
     ArrayType,
     Assignment,
     BinaryOp,
+    EnumType,
     FieldAccess,
     FunctionCall,
     HandoffBlock,
     Identifier,
     IfStmt,
+    ImportDecl,
     Literal,
     MandateBlock,
     OptionalType,
@@ -24,6 +26,7 @@ from .ast_nodes import (
     ReturnStmt,
     SynthesizeExpr,
     UnaryOp,
+    UnionType,
     VerifyExpr,
 )
 from .lexer import Token, TokenType, LexError
@@ -42,6 +45,19 @@ class Parser:
     def __init__(self, tokens: list[Token]):
         self.tokens = tokens
         self.pos = 0
+        self.errors: list[ParseError] = []
+        self._enum_names: set[str] = set()  # tracks declared enum type names
+
+    def _error(self, message: str, token: Token | None = None) -> None:
+        """Record an error and attempt recovery."""
+        self.errors.append(ParseError(message, token or self.current()))
+
+    def _recover_to(self, *token_types: TokenType) -> None:
+        """Skip tokens until one of the given types is found."""
+        while not self.at(TokenType.EOF):
+            if self.current().type in token_types:
+                return
+            self.advance()
 
     # ----- helpers -----
 
@@ -93,16 +109,32 @@ class Parser:
     # ----- type parsing -----
 
     def parse_type(self) -> Any:
-        """Parse a type expression: primitive, array, optional, or record."""
+        """Parse a type expression: primitive, array, optional, record, enum ref, or union."""
+        base = self._parse_single_type()
+
+        # Check for union: type | type | ...
+        if self.at(TokenType.PIPE):
+            types = [base]
+            while self.match(TokenType.PIPE):
+                types.append(self._parse_single_type())
+            return UnionType(types)
+
+        return base
+
+    def _parse_single_type(self) -> Any:
+        """Parse a single type (no union)."""
         if self.at(TokenType.LBRACE):
             return self.parse_record_type()
 
         tok = self.expect(TokenType.IDENT)
         name = tok.value
-        if name not in ("string", "int", "float", "bool"):
+        if name not in ("string", "int", "float", "bool") and name not in self._enum_names:
             raise ParseError(f"Unknown type: {name!r}", tok)
 
-        base: Any = PrimitiveType(name)
+        if name in self._enum_names:
+            base: Any = PrimitiveType(name)  # enum reference treated as named type
+        else:
+            base = PrimitiveType(name)
 
         # Check for array brackets
         if self.at(TokenType.LBRACKET):
@@ -136,13 +168,60 @@ class Parser:
     # ----- top-level parsing -----
 
     def parse_program(self) -> Program:
-        """Parse a complete .mdt file."""
+        """Parse a complete .mdt file, collecting all errors."""
         self.skip_newlines()
+        imports: list[ImportDecl] = []
         mandates: list[MandateBlock] = []
+        enums: list[EnumType] = []
+
         while not self.at(TokenType.EOF):
-            mandates.append(self.parse_mandate())
+            try:
+                if self.at(TokenType.IMPORT):
+                    imports.append(self.parse_import())
+                elif self.at(TokenType.ENUM):
+                    enums.append(self.parse_enum())
+                elif self.at(TokenType.MANDATE):
+                    mandates.append(self.parse_mandate())
+                else:
+                    raise ParseError(
+                        f"Expected 'mandate', 'import', or 'enum', got {self.current().value!r}",
+                        self.current(),
+                    )
+            except ParseError as e:
+                self.errors.append(e)
+                self._recover_to(TokenType.MANDATE, TokenType.IMPORT, TokenType.ENUM, TokenType.EOF)
             self.skip_newlines()
-        return Program(mandates)
+
+        program = Program(imports=imports, mandates=mandates)
+        program.enums = enums  # type: ignore[attr-defined]
+        return program
+
+    def parse_import(self) -> ImportDecl:
+        """Parse: import <name> from "<path>"."""
+        self.expect(TokenType.IMPORT)
+        name = self.expect(TokenType.IDENT).value
+        self.expect(TokenType.FROM)
+        path = self.expect(TokenType.STRING).value
+        self.skip_newlines()
+        return ImportDecl(name=name, path=path)
+
+    def parse_enum(self) -> EnumType:
+        """Parse: enum <Name> { variant1, variant2, ... }."""
+        self.expect(TokenType.ENUM)
+        name = self.expect(TokenType.IDENT).value
+        self.expect(TokenType.LBRACE)
+        self.skip_newlines()
+
+        variants: list[str] = []
+        while not self.at(TokenType.RBRACE):
+            variants.append(self.expect(TokenType.IDENT).value)
+            self.match(TokenType.COMMA)
+            self.skip_newlines()
+
+        self.expect(TokenType.RBRACE)
+        self.skip_newlines()
+        self._enum_names.add(name)
+        return EnumType(name=name, variants=variants)
 
     def parse_mandate(self) -> MandateBlock:
         """Parse: mandate <name> { ... }."""
@@ -560,6 +639,22 @@ class Parser:
 
 
 def parse(tokens: list[Token]) -> Program:
-    """Parse a token stream into an AST Program."""
+    """Parse a token stream into an AST Program.
+
+    Collects multiple errors when possible. If any errors were found,
+    raises a MultiParseError containing all of them.
+    """
     parser = Parser(tokens)
-    return parser.parse_program()
+    program = parser.parse_program()
+    if parser.errors:
+        raise MultiParseError(parser.errors)
+    return program
+
+
+class MultiParseError(Exception):
+    """Container for multiple parse errors found in a single file."""
+
+    def __init__(self, errors: list[ParseError]):
+        self.errors = errors
+        messages = [str(e) for e in errors]
+        super().__init__(f"{len(errors)} parse error(s):\n  " + "\n  ".join(messages))

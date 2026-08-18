@@ -44,13 +44,18 @@ def main():
 def parse(file: str):
     """Parse a .mdt file and display the AST."""
     from .lexer import tokenize
-    from .parser import parse as parse_tokens
+    from .parser import parse as parse_tokens, MultiParseError
 
     source = _read_source(file)
 
     try:
         tokens = tokenize(source)
         program = parse_tokens(tokens)
+    except MultiParseError as e:
+        console.print(f"[mandate.fail]{len(e.errors)} parse error(s) in {file}:[/]")
+        for err in e.errors:
+            console.print(f"  [mandate.fail]x[/] {err}")
+        sys.exit(1)
     except Exception as e:
         console.print(f"[mandate.fail]Parse error:[/] {e}")
         sys.exit(1)
@@ -68,7 +73,7 @@ def parse(file: str):
 def check(file: str):
     """Parse and type-check a .mdt file."""
     from .lexer import tokenize
-    from .parser import parse as parse_tokens
+    from .parser import parse as parse_tokens, MultiParseError
     from .type_checker import check as type_check
 
     source = _read_source(file)
@@ -76,6 +81,11 @@ def check(file: str):
     try:
         tokens = tokenize(source)
         program = parse_tokens(tokens)
+    except MultiParseError as e:
+        console.print(f"[mandate.fail]{len(e.errors)} parse error(s) in {file}:[/]")
+        for err in e.errors:
+            console.print(f"  [mandate.fail]x[/] {err}")
+        sys.exit(1)
     except Exception as e:
         console.print(f"[mandate.fail]Parse error:[/] {e}")
         sys.exit(1)
@@ -244,6 +254,39 @@ def air(file: str, lineage: str | None):
     lineage_dict = json.loads(lineage) if lineage else None
     air_json = to_air_json(program.mandates[0], lineage=lineage_dict)
     console.print(Syntax(air_json, "json", theme="monokai"))
+
+
+@main.command()
+@click.argument("file")
+@click.option("--write", "-w", is_flag=True, help="Write formatted output back to file")
+def fmt(file: str, write: bool):
+    """Auto-format a .mdt file to canonical style."""
+    from .formatter import format_program
+    from .lexer import tokenize
+    from .parser import parse as parse_tokens, MultiParseError
+
+    source = _read_source(file)
+
+    try:
+        tokens = tokenize(source)
+        program = parse_tokens(tokens)
+    except MultiParseError as e:
+        console.print(f"[mandate.fail]Cannot format — {len(e.errors)} parse error(s):[/]")
+        for err in e.errors:
+            console.print(f"  [mandate.fail]x[/] {err}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[mandate.fail]Parse error:[/] {e}")
+        sys.exit(1)
+
+    formatted = format_program(program)
+
+    if write:
+        Path(file).write_text(formatted, encoding="utf-8")
+        console.print(f"[mandate.ok]Formatted[/] {file}")
+    else:
+        syntax = Syntax(formatted, "rust", theme="monokai", line_numbers=True)
+        console.print(Panel(syntax, title=f"[mandate.gold]Formatted: {file}[/]", border_style="mandate.gold"))
 
 
 @main.command()

@@ -8,6 +8,7 @@ from .ast_nodes import (
     ArrayType,
     Assignment,
     BinaryOp,
+    EnumType,
     FieldAccess,
     FunctionCall,
     Identifier,
@@ -22,6 +23,7 @@ from .ast_nodes import (
     ReturnStmt,
     SynthesizeExpr,
     UnaryOp,
+    UnionType,
     VerifyExpr,
 )
 
@@ -253,6 +255,10 @@ class Transpiler:
             return f"{self._type_to_string(t.element_type)}[]"
         if isinstance(t, RecordType):
             return "record"
+        if isinstance(t, EnumType):
+            return t.name
+        if isinstance(t, UnionType):
+            return " | ".join(self._type_to_string(sub) for sub in t.types)
         return str(t)
 
 

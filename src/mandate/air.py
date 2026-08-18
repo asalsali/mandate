@@ -10,6 +10,7 @@ from .ast_nodes import (
     ArrayType,
     Assignment,
     BinaryOp,
+    EnumType,
     FieldAccess,
     FunctionCall,
     HandoffBlock,
@@ -26,6 +27,7 @@ from .ast_nodes import (
     ReturnStmt,
     SynthesizeExpr,
     UnaryOp,
+    UnionType,
     VerifyExpr,
 )
 from .verify import VerifyResult
@@ -41,6 +43,10 @@ def _type_to_dict(t: Any) -> dict | str:
         return {"optional": _type_to_dict(t.inner_type)}
     if isinstance(t, RecordType):
         return {"record": {k: _type_to_dict(v) for k, v in t.fields.items()}}
+    if isinstance(t, EnumType):
+        return {"enum": {"name": t.name, "variants": t.variants}}
+    if isinstance(t, UnionType):
+        return {"union": [_type_to_dict(sub) for sub in t.types]}
     return str(t)
 
 

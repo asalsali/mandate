@@ -256,6 +256,27 @@ def run(
     return result
 
 
+def _resolve_imports(program, base_path: Path) -> list:
+    """Resolve import declarations, returning imported mandate blocks."""
+    imported_mandates = []
+    for imp in program.imports:
+        import_path = (base_path / imp.path).resolve()
+        if not import_path.exists():
+            raise RuntimeError(f"Import not found: {imp.path} (resolved to {import_path})")
+        imp_source = import_path.read_text(encoding="utf-8")
+        imp_tokens = tokenize(imp_source)
+        imp_program = parse(imp_tokens)
+        # Find the named mandate in the imported file
+        found = [m for m in imp_program.mandates if m.name == imp.name]
+        if not found:
+            raise RuntimeError(
+                f"Import '{imp.name}' not found in {imp.path}. "
+                f"Available: {[m.name for m in imp_program.mandates]}"
+            )
+        imported_mandates.append(found[0])
+    return imported_mandates
+
+
 def run_pipeline(
     mdt_file: str | Path,
     input_data: dict,
@@ -266,12 +287,19 @@ def run_pipeline(
 
     Output of mandate N is merged into the input of mandate N+1.
     Each stage runs type-checking, execution, and verification.
+    Imports are resolved relative to the file's directory.
     """
     path = Path(mdt_file)
     source = path.read_text(encoding="utf-8")
 
     tokens = tokenize(source)
     program = parse(tokens)
+
+    # Resolve imports and prepend to mandate list
+    if program.imports:
+        imported = _resolve_imports(program, path.parent)
+        program.mandates = imported + program.mandates
+
     if not program.mandates:
         raise RuntimeError(f"No mandate blocks found in {path}")
 

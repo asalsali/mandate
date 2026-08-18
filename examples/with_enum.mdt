@@ -1,0 +1,27 @@
+enum Priority { low, medium, high, critical }
+
+mandate classify_task {
+  intent: "Classify a task by priority"
+
+  input: { description: string }
+  output: { priority: string, reason: string }
+
+  flow {
+    priority = synthesize {
+      given: input.description
+      produce: string
+      instruction: "Classify this task as low, medium, high, or critical"
+    }
+    reason = synthesize {
+      given: input.description
+      produce: string
+      instruction: "Explain why this priority was chosen"
+    }
+    return { priority: priority, reason: reason }
+  }
+
+  verify {
+    output.priority.length > 0
+    output.reason.length > 0
+  }
+}

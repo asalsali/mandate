@@ -1,0 +1,21 @@
+mandate fetch_data {
+  intent: "Fetch and clean raw data"
+
+  input: { source: string }
+  output: { data: string, rows: int }
+
+  flow {
+    data = synthesize {
+      given: input.source
+      produce: string
+      instruction: "Generate sample CSV data for this source"
+    }
+    rows = 100
+    return { data: data, rows: rows }
+  }
+
+  verify {
+    output.rows > 0
+    output.data.length > 0
+  }
+}

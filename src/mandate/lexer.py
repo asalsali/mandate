@@ -33,6 +33,9 @@ class TokenType(Enum):
     WORKED = auto()
     FAILED = auto()
     NEXT = auto()
+    ENUM = auto()
+    IMPORT = auto()
+    FROM = auto()
 
     # Delimiters
     LBRACE = auto()
@@ -60,6 +63,7 @@ class TokenType(Enum):
     GTE = auto()
     LTE = auto()
     QUESTION = auto()
+    PIPE = auto()
 
     # Literals
     STRING = auto()
@@ -97,6 +101,9 @@ KEYWORDS: dict[str, TokenType] = {
     "worked": TokenType.WORKED,
     "failed": TokenType.FAILED,
     "next": TokenType.NEXT,
+    "enum": TokenType.ENUM,
+    "import": TokenType.IMPORT,
+    "from": TokenType.FROM,
 }
 
 
@@ -269,6 +276,7 @@ def tokenize(source: str) -> list[Token]:
             ">": TokenType.GT,
             "<": TokenType.LT,
             "?": TokenType.QUESTION,
+            "|": TokenType.PIPE,
         }
         if ch in singles:
             tokens.append(Token(singles[ch], ch, line, col))

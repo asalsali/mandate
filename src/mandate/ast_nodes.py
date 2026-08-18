@@ -47,6 +47,25 @@ class RecordType:
         return "{" + parts + "}"
 
 
+@dataclass
+class EnumType:
+    """enum Status { active, pending, closed }."""
+    name: str
+    variants: list[str]
+
+    def __repr__(self) -> str:
+        return f"enum {self.name}"
+
+
+@dataclass
+class UnionType:
+    """string | int — a value that can be one of several types."""
+    types: list[Any]  # list of type nodes
+
+    def __repr__(self) -> str:
+        return " | ".join(str(t) for t in self.types)
+
+
 # ---------------------------------------------------------------------------
 # Expression nodes
 # ---------------------------------------------------------------------------
@@ -175,6 +194,13 @@ class RequiresDecl:
 # ---------------------------------------------------------------------------
 
 @dataclass
+class ImportDecl:
+    """import <name> from "<path>"."""
+    name: str
+    path: str
+
+
+@dataclass
 class MandateBlock:
     """The top-level mandate { ... } block."""
     name: str
@@ -190,4 +216,5 @@ class MandateBlock:
 @dataclass
 class Program:
     """A .mdt file can contain one or more mandate blocks."""
+    imports: list[ImportDecl] = field(default_factory=list)
     mandates: list[MandateBlock] = field(default_factory=list)

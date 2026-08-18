@@ -9,6 +9,7 @@ from .ast_nodes import (
     ArrayType,
     Assignment,
     BinaryOp,
+    EnumType,
     FieldAccess,
     FunctionCall,
     Identifier,
@@ -23,6 +24,7 @@ from .ast_nodes import (
     ReturnStmt,
     SynthesizeExpr,
     UnaryOp,
+    UnionType,
     VerifyExpr,
 )
 
